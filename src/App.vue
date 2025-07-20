@@ -12,13 +12,16 @@
           <tbody>
           <tr>
             <td>Ймовірність</td>
-            <td v-for="row in probabilities" :key="'p' + row.k">{{ (row.prob * 100).toFixed(10) }}%</td>
+            <td v-for="row in probabilities" :key="'p' + row.k">{{ (row.prob * 100).toFixed(5) }}%</td>
           </tr>
           </tbody>
         </table>
       </div>
       <div class="controls">
-        <button @click="checkMatches">Перевірити</button>
+        <div class="button-container">
+          <button @click="checkMatches" :disabled="checked">Перевірити</button>
+          <div v-if="checked" class="disabled-message">Перевірку вже виконано</div>
+        </div>
         <div><strong>Вгадано {{ correctCount }} з 12</strong></div>
       </div>
     </div>
@@ -33,6 +36,8 @@
           class="signs-inline wrap"
           :swap="true"
           :swapThreshold="0.5"
+          @start="startDragging"
+          @end="endDragging"
       >
         <template #item="{ element }">
           <div class="sign-card">{{ element }}</div>
@@ -50,9 +55,14 @@
             :swap="true"
             :swapThreshold="0.5"
             :move="checkMove"
+            @start="startDragging"
+            @end="endDragging"
         >
           <template #item="{ element }">
-            <div class="sign-card" :class="{ 'correct': verificationResults[index] === true, 'incorrect': verificationResults[index] === false }">{{ element }}</div>
+            <div class="sign-card" :class="{ 
+              'correct': !isDragging && !colorsHiddenPermanently && verificationResults[index] === true, 
+              'incorrect': !isDragging && !colorsHiddenPermanently && verificationResults[index] === false 
+            }">{{ element }}</div>
           </template>
         </Draggable>
         <div class="description-text">{{ item.text }}</div>
@@ -83,23 +93,46 @@ const assignedSigns = ref<(string[])[]>([]);
 const correctCount = ref(0);
 const probabilities = ref<ProbabilityRow[]>([]);
 const verificationResults = ref<{[index: number]: boolean | null}>({}); // Store verification results
+const checked = ref(false);
+const isDragging = ref(false); // Track if any card is currently being dragged
+const colorsHiddenPermanently = ref(false); // Track if colors should be permanently hidden
 
 onMounted(() => {
+  console.log('Ініціалізація додатку...');
+
+  console.log('Завантаження та перемішування описів знаків зодіаку');
   shuffledDescriptions.value = shuffleArray([...descriptionsJson]);
+
+  console.log('Завантаження та перемішування знаків зодіаку');
   availableSigns.value = shuffleArray(descriptionsJson.map(d => d.sign));
+
+  console.log('Створення порожніх слотів для розміщення знаків');
   assignedSigns.value = Array(12).fill(null).map(() => []);
+
+  console.log('Завантаження даних про ймовірності');
   probabilities.value = probabilityData;
+
   // Initialize verification results to null (not verified yet)
+  console.log('Ініціалізація результатів перевірки');
   shuffledDescriptions.value.forEach((_, index) => {
     verificationResults.value[index] = null;
   });
+
+  console.log('Додаток готовий до використання');
 });
 
 function shuffleArray<T>(array: T[]): T[] {
+  console.log(`Перемішування масиву з ${array.length} елементів`);
   return [...array].sort(() => Math.random() - 0.5);
 }
 
 function checkMatches() {
+  if (checked.value) {
+    console.log('Перевірка вже була виконана');
+    return;
+  }
+
+  console.log('Початок перевірки відповідей');
   let correct = 0;
   shuffledDescriptions.value.forEach((desc, index) => {
     const assigned = assignedSigns.value[index][0];
@@ -110,21 +143,32 @@ function checkMatches() {
     if (isCorrect) correct++;
   });
   correctCount.value = correct;
+  checked.value = true;
+  console.log(`Перевірка завершена: вгадано ${correct} з 12 знаків`);
 }
 
 function checkMove(evt) {
-  // Allow swapping (when both source and target have items)
-  if (evt.draggedContext.element && evt.relatedContext.element) {
+  const draggedElement = evt.draggedContext.element;
+  const targetElement = evt.relatedContext.element;
+  const targetList = evt.relatedContext.list;
+
+  if (draggedElement && targetElement) {
     return true;
   }
 
-  // Allow moving to empty dropzone
-  if (!evt.relatedContext.element && evt.relatedContext.list.length === 0) {
-    return true;
-  }
+  return !targetElement && targetList.length === 0;
+}
 
-  // Prevent adding to a dropzone that already has an item (unless it's a swap)
-  return false;
+function startDragging() {
+  isDragging.value = true;
+
+  if (checked.value && !colorsHiddenPermanently.value) {
+    colorsHiddenPermanently.value = true;
+  }
+}
+
+function endDragging() {
+  isDragging.value = false;
 }
 </script>
 
@@ -160,6 +204,20 @@ function checkMove(evt) {
   align-items: center;
 }
 
+.button-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.disabled-message {
+  font-size: 14px;
+  color: #ff9800;
+  font-style: italic;
+  text-align: center;
+}
+
 .probabilities {
   background: #1e1e1e;
   padding: 12px;
@@ -182,6 +240,15 @@ function checkMove(evt) {
   background: #2a2a2a;
 }
 
+button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  background-color: #555;
+  border: 1px solid #777;
+  color: #ccc;
+  text-decoration: line-through;
+}
+
 button {
   padding: 10px 16px;
   background-color: #1976d2;
@@ -189,6 +256,11 @@ button {
   border: none;
   border-radius: 6px;
   cursor: pointer;
+  transition: transform 0.1s ease, background-color 0.3s ease;
+}
+
+button:active {
+  transform: scale(0.95);
 }
 
 .signs-row {
